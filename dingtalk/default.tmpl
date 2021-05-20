@@ -1,0 +1,62 @@
+{{ define "__subject" }}
+[告警{{ if eq .Status "firing" }}:{{ .Alerts.Firing | len }}{{ end }}]
+{{ end }}
+
+{{ define "__alert_list" }}{{ range . }}
+---
+**告警名称**: {{ index .Annotations "summary" }}
+
+**告警级别**: {{ .Labels.severity }}
+
+**告警主机**: {{ .Labels.instance }}
+
+**告警信息**: {{ index .Annotations "description" }}
+
+**维护团队**: {{ .Labels.team | upper }}
+
+**告警时间**: {{ (.StartsAt.Add 2800e9).Format "2021-05-20 16:00:00" }}
+
+{{ end }}{{ end }}
+
+{{ define "__resolved_list" }}{{ range . }}
+---
+**告警名称**: {{ index .Annotations "summary" }}
+
+**告警级别**: {{ .Labels.severity }}
+
+**告警主机**: {{ .Labels.instance }}
+
+**告警信息**: {{ index .Annotations "description" }}
+
+**维护团队**: {{ .Labels.team | upper }}
+
+**告警时间**: {{ (.StartsAt.Add 28800e9).Format "2021-05-20 16:00:00" }}
+
+**恢复时间**: {{ (.EndsAt.Add 2800e9).Format "2021-05-20 16:00:00" }}
+
+{{ end }}{{ end }}
+
+
+{{ define "default.title" }}
+{{ template "__subject" . }}
+{{ end }}
+
+{{ define "default.content" }}#### \[{{ .Status | toUpper }}{{ if eq .Status "firing" }}:{{ .Alerts.Firing | len }}{{ end }}\] **[{{ index .GroupLabels "alertname" }}]({{ template "__alertmanagerURL" . }})**
+{{ if gt (len .Alerts.Firing) 0 }}
+
+**====侦测到{{ .Alerts.Firing | len  }}个故障====**
+{{ template "__alert_list" .Alerts.Firing }}
+---
+{{ end }}
+
+{{ if gt (len .Alerts.Resolved) 0 }}
+**====恢复{{ .Alerts.Resolved | len  }}个故障====**
+{{ template "__resolved_list" .Alerts.Resolved }}
+{{ end }}
+{{ end }}
+
+
+{{ define "ding.link.title" }}{{ template "default.title" . }}{{ end }}
+{{ define "ding.link.content" }}{{ template "default.content" . }}{{ end }}
+{{ template "default.title" . }}
+{{ template "default.content" . }}

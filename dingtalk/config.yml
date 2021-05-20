@@ -1,0 +1,37 @@
+## Request timeout
+# timeout: 5s
+
+## Customizable templates path
+templates:
+  - /etc/prometheus-webhook-dingtalk/default.tmpl
+
+## You can also override default template using `default_message`
+## The following example to use the 'legacy' template from v0.3.0
+# default_message:
+#   title: '{{ template "legacy.title" . }}'
+#   text: '{{ template "legacy.content" . }}'
+
+## Targets, previously was known as "profiles"
+targets:
+  ops:
+    url: https://oapi.dingtalk.com/robot/send?access_token=211f13254d1a71e15795effc45d3320fef5b136ec2c18cc75ad9355d9169df2a
+    # secret for signature
+    secret: SEC0000000000000000000000000000000000000000000000000000000000000000
+  dev:
+    url: https://oapi.dingtalk.com/robot/send?access_token=211f13254d1a71e15795effc45d3320fef5b136ec2c18cc75ad9355d9169df2a
+    secret: SEC0000000000000000000000000000000000000000000000000000000000000000
+  webhook_legacy:
+    url: https://oapi.dingtalk.com/robot/send?access_token=211f13254d1a71e15795effc45d3320fef5b136ec2c18cc75ad9355d9169df2a
+    # Customize template content
+    message:
+      # Use legacy template
+      title: '{{ template "legacy.title" . }}'
+      text: '{{ template "legacy.content" . }}'
+  webhook_mention_all:
+    url: https://oapi.dingtalk.com/robot/send?access_token=211f13254d1a71e15795effc45d3320fef5b136ec2c18cc75ad9355d9169df2a
+    mention:
+      all: true
+  webhook_mention_users:
+    url: https://oapi.dingtalk.com/robot/send?access_token=211f13254d1a71e15795effc45d3320fef5b136ec2c18cc75ad9355d9169df2a
+    mention:
+      mobiles: ['1860571XXXX', '1860571XXXX']

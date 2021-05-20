@@ -1,0 +1,220 @@
+version: "3.8"
+
+  cadvisor:
+    image: docker:19.03.13
+    volumes: 
+        - /var/run/docker.sock:/var/run/docker.sock
+    entrypoint: ["/bin/sh","-c"]
+    networks:
+      - cnet
+    deploy:
+      mode: global
+    environment:
+      - TZ=Asia/Shanghai
+      - PARENT={{.Task.Name}}
+      - CHILDNAME={{.Service.Name}}_sidecar.{{.Node.ID}}.{{.Task.ID}}
+      - CADVISOR_VERSION=v0.37.5
+    command: 
+    - |
+      exec docker run -i --rm --network="container:$${PARENT}" \
+            --env=TZ=Asia/Shanghai \
+            --volume=/:/rootfs:ro \
+            --volume=/var/run:/var/run:ro  \
+            --volume=/var/run/docker.sock:/var/run/docker.sock:ro \
+            --volume=/sys:/sys:ro  \
+            --volume=/var/lib/docker/:/var/lib/docker:ro \
+            --volume=/dev/disk/:/dev/disk:ro \
+            --name $${CHILDNAME} \
+            --privileged \
+            --device=/dev/kmsg \
+            cjie001/cadvisor:0.37.5 -docker_only
+
+  grafana:
+    image: cjie001/grafana:7.5.5
+    networks:
+      - cnet
+    environment:
+      - TZ=Asia/Shanghai
+      - GF_SECURITY_ADMIN_USER=${ADMIN_USER:-admin}
+      - GF_SECURITY_ADMIN_PASSWORD=${ADMIN_PASSWORD:-admin}
+      - GF_USERS_ALLOW_SIGN_UP=false
+      #- GF_SERVER_ROOT_URL=${GF_SERVER_ROOT_URL:-localhost}
+      #- GF_SMTP_ENABLED=${GF_SMTP_ENABLED:-false}
+      #- GF_SMTP_FROM_ADDRESS=${GF_SMTP_FROM_ADDRESS:-grafana@test.com}
+      #- GF_SMTP_FROM_NAME=${GF_SMTP_FROM_NAME:-Grafana}
+      #- GF_SMTP_HOST=${GF_SMTP_HOST:-smtp:25}
+      #- GF_SMTP_USER=${GF_SMTP_USER}
+      #- GF_SMTP_PASSWORD=${GF_SMTP_PASSWORD}
+    volumes:
+      - grafana:/var/lib/grafana
+    deploy:
+      mode: replicated
+      replicas: 1
+      placement:
+        constraints:
+          - node.role == manager
+      resources:
+        limits:
+          memory: 128M
+        reservations:
+          memory: 64M
+      labels:
+        - traefik.enable=true
+        - traefik.docker.network=cnet
+        - traefik.http.routers.grafana-http.rule=Host(`grafana.${DOMAIN?Variable DOMAIN not set}`)
+        - traefik.http.routers.grafana-http.entrypoints=http
+        - traefik.http.services.grafana.loadbalancer.server.port=3000
+
+  dingtalk:
+    image: cjie001/prometheus-webhook-dingtalk:latest
+    #ports:
+    #  - "8060:8060"
+    environment:
+      TZ: 'Asia/Shanghai'
+    command:
+      - '--config.file=/etc/prometheus-webhook-dingtalk/config.yml'
+      - '--web.enable-ui'
+      - '--web.enable-lifecycle'
+    networks:
+      - cnet
+    volumes:
+      - dingtalk_etc:/etc/prometheus-webhook-dingtalk
+    deploy:
+      resources:
+        limits:
+          memory: 128M
+        reservations:
+          memory: 64M
+      labels:
+        - traefik.enable=true
+        - traefik.docker.network=cnet
+        - traefik.http.routers.webhook-dingtalk-http.rule=Host(`dingtalk.${DOMAIN?Variable DOMAIN not set}`)
+        - traefik.http.routers.webhook-dingtalk-http.entrypoints=http
+        - traefik.http.middlewares.webhook-dingtalk-auth.basicauth.users=${ADMIN_USER?Variable ADMIN_USER not set}:${HASHED_PASSWORD?Variable HASHED_PASSWORD not set}
+        - traefik.http.routers.webhook-dingtalk-http.middlewares=webhook-dingtalk-auth
+        - traefik.http.services.webhook-dingtalk.loadbalancer.server.port=8060
+
+  alertmanager:
+    image: cjie001/alertmanager:v0.21.0
+    networks:
+      - cnet
+    environment:
+      TZ: 'Asia/Shanghai'
+    command:
+      - '--config.file=/etc/alertmanager/alertmanager.yml'
+      - '--storage.path=/alertmanager'
+    deploy:
+      placement:
+        constraints:
+          - node.role == manager
+      resources:
+        limits:
+          memory: 128M
+        reservations:
+          memory: 64M
+      labels:
+        - traefik.enable=true
+        - traefik.docker.network=cnet
+        - traefik.http.routers.alertmanager-http.rule=Host(`alertmanager.${DOMAIN?Variable DOMAIN not set}`)
+        - traefik.http.routers.alertmanager-http.entrypoints=http
+        - traefik.http.routers.alertmanager-http.middlewares=alertmanager-auth
+        - traefik.http.middlewares.alertmanager-auth.basicauth.users=${ADMIN_USER?Variable ADMIN_USER not set}:${HASHED_PASSWORD?Variable HASHED_PASSWORD not set}
+        - traefik.http.services.alertmanager.loadbalancer.server.port=9093
+
+  karma:
+    image: lmierzwa/karma:v0.85
+    networks:
+      - cnet
+    #ports:
+    #- "8061:8080"
+    environment:
+      - TZ=Asia/Shanghai
+      - ALERTMANAGER_URI=http://alertmanager:9093
+    deploy:
+      mode: replicated
+      resources:
+        limits:
+          memory: 128M
+        reservations:
+          memory: 64M
+      replicas: 1
+      labels:
+        - traefik.enable=true
+        - traefik.docker.network=cnet
+        - traefik.http.routers.karma-http.rule=Host(`karma.${DOMAIN?Variable DOMAIN not set}`)
+        - traefik.http.routers.karma-http.entrypoints=http
+        - traefik.http.middlewares.karma-auth.basicauth.users=${ADMIN_USER?Variable ADMIN_USER not set}:${HASHED_PASSWORD?Variable HASHED_PASSWORD not set}
+        - traefik.http.routers.karma-http.middlewares=karma-auth
+        - traefik.http.services.karma.loadbalancer.server.port=8080
+
+  node-exporter:
+    image: cjie001/node-exporter:v1.1.2
+    networks:
+      - cnet
+    environment:
+      - TZ=Asia/Shanghai
+      - NODE_ID={{.Node.ID}}
+    volumes:
+      - /proc:/host/proc:ro
+      - /sys:/host/sys:ro
+      - /:/rootfs:ro
+      - /etc/hostname:/etc/nodename
+    command:
+      - '--path.sysfs=/host/sys'
+      - '--path.procfs=/host/proc'
+      - '--collector.textfile.directory=/etc/node-exporter/'
+      - '--collector.filesystem.ignored-mount-points=^/(sys|proc|dev|host|etc)($$|/)'
+      - '--no-collector.ipvs'
+    deploy:
+      mode: global
+      resources:
+        limits:
+          memory: 128M
+        reservations:
+          memory: 64M
+
+  prometheus:
+    image: cjie001/prometheus:v2.26.0
+    #ports:
+    #- "9090:9090"
+    networks:
+      - cnet
+    environment:
+      - TZ=Asia/Shanghai
+    command:
+      - '--config.file=/etc/prometheus/prometheus.yml'
+      - '--storage.tsdb.path=/prometheus'
+      - '--storage.tsdb.retention=${PROMETHEUS_RETENTION:-48h}'
+      - '--web.console.libraries=/etc/prometheus/console_libraries'
+      - '--web.console.templates=/etc/prometheus/consoles'
+      - '--web.enable-lifecycle'
+    volumes:
+      - prometheus_data:/prometheus
+      - prometheus_etc:/etc/prometheus
+      - /var/run/docker.sock:/var/run/docker.sock
+    deploy:
+      placement:
+        constraints:
+          - node.role == manager
+      resources:
+        limits:
+          memory: 2048M
+        reservations:
+          memory: 128M
+      labels:
+        - traefik.enable=true
+        - traefik.docker.network=cnet
+        - traefik.http.routers.prometheus-http.rule=Host(`prometheus.${DOMAIN?Variable DOMAIN not set}`)
+        - traefik.http.routers.prometheus-http.entrypoints=http
+        - traefik.http.middlewares.prometheus-auth.basicauth.users=${ADMIN_USER?Variable ADMIN_USER not set}:${HASHED_PASSWORD?Variable HASHED_PASSWORD not set}
+        - traefik.http.routers.prometheus-http.middlewares=prometheus-auth
+        - traefik.http.services.prometheus.loadbalancer.server.port=9090
+
+volumes:
+    prometheus_data:
+    prometheus_etc:
+    dingtalk_etc:
+    grafana:
+
+networks:
+  cnet:

@@ -1,0 +1,64 @@
+groups:
+- name: swarm_task.rules
+  rules:
+  - alert: task_high_cpu_usage_50
+    expr: sum(rate(container_cpu_usage_seconds_total{container_label_com_docker_swarm_task_name=~".+"}[1m]))
+      BY (container_label_com_docker_swarm_task_name, container_label_com_docker_swarm_node_id)
+      * 100 > 50
+    for: 1m
+    labels:
+      severity: critical
+    annotations:
+      description: '{{ $labels.container_label_com_docker_swarm_task_name }} on ''{{
+        $labels.container_label_com_docker_swarm_node_id }}'' CPU 使用率 {{ humanize
+        $value}}%.'
+      summary: CPU 告警 '{{ $labels.container_label_com_docker_swarm_task_name
+        }}' on '{{ $labels.container_label_com_docker_swarm_node_id }}'
+  - alert: task_high_memory_usage_1g
+    expr: sum(container_memory_rss{container_label_com_docker_swarm_task_name=~".+"})
+      BY (container_label_com_docker_swarm_task_name, container_label_com_docker_swarm_node_id) > 1e+09
+    for: 1m
+    labels:
+      severity: critical
+    annotations:
+      description: '{{ $labels.container_label_com_docker_swarm_task_name }} on ''{{
+        $labels.container_label_com_docker_swarm_node_id }}'' 占用内存 {{ humanize
+        $value}}.'
+      summary: 内存告警 '{{ $labels.container_label_com_docker_swarm_task_name
+        }}' on '{{ $labels.container_label_com_docker_swarm_node_id }}'
+
+  - alert: service_group_warnning
+    expr: count(rate(container_memory_usage_bytes{container_label_com_docker_stack_namespace=~"openresty"}[1m])) < 2
+    for: 1m
+    labels:
+      severity: critical
+    annotations:
+      description: 'STACK openresty 容器数量不足: {{ $value }} / 2.'
+      summary: '服务数量不符合预期'
+  - alert: service_group_warnning
+    expr: count(rate(container_memory_usage_bytes{container_label_com_docker_stack_namespace=~"cpassat"}[1m])) < 14
+    for: 1m
+    labels:
+      severity: critical
+    annotations:
+      description: 'STACK cpassat 容器数量不足: {{ $value }} / 14.'
+      summary: '服务数量不符合预期'
+
+  - alert: services_down
+    expr: absent(count(container_memory_usage_bytes{container_label_com_docker_swarm_service_name=~"cpassat_cpas-pcl"}))
+    for: 30s
+    labels:
+      severity: critical
+      team: dev
+    annotations:
+      description: '支付中心服务 cpas-pcl 停止超过 30 秒'
+      summary: '服务无可用实例'
+  - alert: services_down
+    expr: absent(count(container_memory_usage_bytes{container_label_com_docker_swarm_service_name=~"cpfssit-1_cpfsfe"}))
+    for: 30s
+    labels:
+      severity: critical
+      team: dev
+    annotations:
+      description: '云支付前置服务 cpfsfe 停止超过 30 秒'
+      summary: '服务无可用实例'
