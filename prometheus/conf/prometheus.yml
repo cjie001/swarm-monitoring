@@ -40,21 +40,11 @@ scrape_configs:
 
   # Docker Swarm containers monitoring
   - job_name: 'cadvisor'
-    dockerswarm_sd_configs:
-      - host: unix:///var/run/docker.sock
-        role: nodes
-    relabel_configs:
-      # Fetch metrics on port 39080.
-      - source_labels: [__meta_dockerswarm_node_address]
-        target_label: __address__
-        replacement: $1:39080
-      - source_labels: [__meta_dockerswarm_node_manager_address]
-        regex: ([^:]+):\d+
-        target_label: __address__
-        replacement: $1:39080
-      # Set hostname as instance label
-      - source_labels: [__meta_dockerswarm_node_hostname]
-        target_label: instance
+    dns_sd_configs:
+    - names:
+      - 'tasks.cadvisor'
+      type: 'A'
+      port: 8080
 
   - job_name: 'node-exporter'
     dns_sd_configs:
