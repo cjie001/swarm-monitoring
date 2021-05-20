@@ -1,5 +1,7 @@
 version: "3.8"
 
+services:
+
   cadvisor:
     image: docker:19.03.13
     volumes: 
@@ -13,7 +15,6 @@ version: "3.8"
       - TZ=Asia/Shanghai
       - PARENT={{.Task.Name}}
       - CHILDNAME={{.Service.Name}}_sidecar.{{.Node.ID}}.{{.Task.ID}}
-      - CADVISOR_VERSION=v0.37.5
     command: 
     - |
       exec docker run -i --rm --network="container:$${PARENT}" \
