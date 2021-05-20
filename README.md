@@ -4,7 +4,7 @@ Swarm moinitoring clone from [swarmprom](https://github.com/stefanprodan/swarmpr
 [Grafana](http://grafana.org/),
 [cAdvisor](https://github.com/google/cadvisor),
 [Node Exporter](https://github.com/prometheus/node_exporter),
-[Alert Manager](https://github.com/prometheus/alertmanager)
+[Alert Manager](https://github.com/prometheus/alertmanager),
 [Webhook Dingtalk](https://github.com/timonwong/prometheus-webhook-dingtalk)
 and [Karma](https://github.com/prymitive/karma).
 
@@ -182,6 +182,23 @@ discovery. Using the exporters service name, you can configure DNS discovery:
 
 ```yaml
 scrape_configs:
+  # Docker daemons monitoring
+  - job_name: 'docker'
+    dockerswarm_sd_configs:
+      - host: unix:///var/run/docker.sock # You can also use http/https to connect to the Docker daemon.
+        role: nodes
+    relabel_configs:
+      # Fetch metrics on port 9323.
+      - source_labels: [__meta_dockerswarm_node_address]
+        target_label: __address__
+        replacement: $1:9323
+      - source_labels: [__meta_dockerswarm_node_manager_address]
+        regex: ([^:]+):\d+
+        target_label: __address__
+        replacement: $1:9323
+      # Set hostname as instance label
+      - source_labels: [__meta_dockerswarm_node_hostname]
+        target_label: instance
   - job_name: 'node-exporter'
     dns_sd_configs:
     - names:
@@ -283,39 +300,17 @@ sum(engine_daemon_health_checks_failed_total) * on(instance) group_left(node_id)
 For now the engine metrics are still experimental. If you want to use dockerd-exporter you have to enable
 the experimental feature and set the metrics address to `0.0.0.0:9323`.
 
-If you are running Docker with systemd create or edit
-/etc/systemd/system/docker.service.d/docker.conf file like so:
+Create or edit /etc/docker/daemon.json file like so:
 
 ```
-[Service]
-ExecStart=
-ExecStart=/usr/bin/dockerd \
-  --storage-driver=overlay2 \
-  --dns 8.8.4.4 --dns 8.8.8.8 \
-  --experimental=true \
-  --metrics-addr 0.0.0.0:9323
+{
+  "metrics-addr": "0.0.0.0:9323",
+  "experimental": true
+}
 ```
 
-Apply the config changes with `systemctl daemon-reload && systemctl restart docker` and
-check if the docker_gwbridge ip address is 172.18.0.1:
+Apply the config changes with `systemctl restart docker`.
 
-```bash
-ip -o addr show docker_gwbridge
-```
-
-Replace 172.18.0.1 with your docker_gwbridge address in the compose file:
-
-```yaml
-  dockerd-exporter:
-    image: stefanprodan/caddy
-    environment:
-      - DOCKER_GWBRIDGE_IP=172.18.0.1
-```
-
-Collecting Docker Swarm metrics with Prometheus is not a smooth process, and
-because of `group_left` queries tend to become more complex.
-In the future I hope Swarm DNS will contain the SRV record for hostname and Docker engine
-metrics will expose container metrics replacing cAdvisor all together.
 
 ## Configure Prometheus
 
@@ -412,13 +407,6 @@ ALERT node_disk_fill_rate_6h
       description = "Swarm node {{ $labels.node_name }} disk is going to fill up in 6h.",
   }
 ```
-
-You can add alerts to
-[swarm_node](https://github.com/stefanprodan/swarmprom/blob/master/prometheus/rules/swarm_node.rules)
-and [swarm_task](https://github.com/stefanprodan/swarmprom/blob/master/prometheus/rules/swarm_task.rules)
-files and rerun stack deploy to update them. Because these files are mounted inside the Prometheus
-container at run time as [Docker configs](https://docs.docker.com/engine/swarm/configs/)
-you don't have to bundle them with the image.
 
 The Prometheus-webhook-dingtalk image is configured with the Dingtalk receiver.
 In order to receive alerts on Dingtalk you have to provide the Dingtalk API url,
