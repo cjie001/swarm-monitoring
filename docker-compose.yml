@@ -19,7 +19,7 @@ services:
       - CHILDNAME={{.Service.Name}}_sidecar.{{.Node.ID}}.{{.Task.ID}}
     command: 
     - |
-      exec docker run -p --network="container:$${PARENT}" \
+      exec docker run -d --network="container:$${PARENT}" \
             --env=TZ=Asia/Shanghai \
             --volume=/:/rootfs:ro \
             --volume=/var/run:/var/run:ro  \
